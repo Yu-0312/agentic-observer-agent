@@ -110,6 +110,18 @@ class BaselineAgent:
         self.planner.extra_avoid = set()
         self.planner.duration_scale = 1.0
         if not self.advisor.enabled:
+            # deterministic stand-in for the advisor: tonight's forecast notices name the
+            # event kind and the compass sectors it will come from
+            night_date = (night_start - timedelta(hours=12)).date().isoformat()
+            for notice in self.forecast_notices:
+                if night_date not in notice.get("nights", []):
+                    continue
+                kind, direction = notice.get("event_kind", ""), notice.get("direction", "")
+                if kind in ("rain", "storm", "rocket_launch", "terrain_obstruction"):
+                    if direction != "ALL":
+                        self.planner.extra_avoid.add(direction)
+                elif kind in ("overcast", "cloudy", "haze", "smoggy") and direction == "ALL":
+                    self.planner.duration_scale = 0.85   # dimmer sky tonight: shorter exposures
             return
         night_date = (night_start - timedelta(hours=12)).date().isoformat()
         tonight = [n for n in self.forecast_notices if night_date in n.get("nights", [])]

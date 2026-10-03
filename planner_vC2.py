@@ -365,9 +365,6 @@ class Planner:
         return (0.0 if f >= DONE_FACTOR else self.weight[i] * (1.0 - f * f) + request) * damp
 
     def _request_gain(self, i: int, _before: float, after: float) -> float:
-        """All-or-nothing request reward, apportioned per target. Below the completion
-        threshold a partial fraction keeps the target scheduled: repeated attempts bank
-        the best factor, so progress today is real progress toward the reward."""
         threshold = self.request_threshold.get(i, 0.0)
         bonus = self.request_bonus.get(i, 0.0)
         if bonus <= 0.0:
@@ -399,7 +396,10 @@ class Planner:
             if -h <= ha and ha + min_visible <= h:
                 nights_left = max(1, self.last_night[i] - night_index + 1)
                 setting = 1.0 + 0.5 * max(0.0, ha / h) if h < 180 else 1.0
-                candidates.append((v * (1.0 + 2.0 / nights_left) * setting, i))
+                urgency = 1.0 + 2.0 / nights_left
+                if self.required[i] and self.factor[i] < 0.5 and nights_left <= 4:
+                    urgency *= 3.0
+                candidates.append((v * urgency * setting, i))
         self.active = still_active
         if not candidates:
             return None
@@ -426,7 +426,9 @@ class Planner:
                 up = (self.hmax[i] - wrap180(lst - self.ra[i])) / SIDEREAL_DEG_PER_SECOND if self.hmax[i] < 180 else 1e9
                 reach = min(1.0, k * min(self.max_exposure, up, seconds_left))
                 f = self.factor[i]
-                gain = self.weight[i] * max(0.0, reach * reach - f * f)
+                # the scorer pays w * factor (linear): value fields and fibres by the true
+                # marginal score, not by the quadratic shaping used for duration choice
+                gain = self.weight[i] * max(0.0, min(1.0, reach) - f)
                 if self.required[i] and f < 0.5 and reach >= 0.5:
                     gain += REQUIRED_BONUS
                 gain += self._request_gain(i, f, reach)
@@ -435,19 +437,12 @@ class Planner:
             return achievable_cache[i]
 
         anchors = []
-        checked_count = 0
-        for priority, i in candidates:
-            if checked_count >= ANCHOR_POOL and len(anchors) >= 3 * ANCHORS:
+        for checked, (priority, i) in enumerate(candidates):
+            if checked >= ANCHOR_POOL and len(anchors) >= 3 * ANCHORS:
                 break
-            checked_count += 1
             weighted = achievable(i) * priority / max(1e-9, self.value(i))  # keep the urgency terms
-            if weighted <= 0:
-                continue
-            if self.fast_level < 1:
-                near = self.neighbours(self.ra[i], self.dec[i], NEIGHBOUR_RADIUS_DEG)
-                fresh = sum(1 for j in near if self.factor[j] <= 0.0)
-                weighted *= (0.4 + 0.6 * min(1.0, fresh / self.grid.n))
-            anchors.append((weighted, i))
+            if weighted > 0:
+                anchors.append((weighted, i))
         if not anchors:
             return None
         anchors.sort(reverse=True)
@@ -533,6 +528,15 @@ class Planner:
         if best is None:
             return None
         duration = best[1]
+        # a required target that cannot cross the 0.5 bar under the current sky still gains
+        # from the longest feasible exposure: its best attempt is what settles in the end
+        hopeless = any(item["k"] * self.max_exposure < 0.5 and self.required[item["i"]]
+                       and self.factor[item["i"]] < 0.5 for item in info.values())
+        if hopeless:
+            longest = min(self.max_exposure, int(seconds_left), int(center_up))
+            longest = max(self.min_exposure, int(round(longest / 30.0) * 30))
+            if longest > duration and any(item["up"] >= longest for item in info.values()):
+                duration = longest
         if best[0] <= 0.0:
             if any(when >= hours - SKY_MEMORY_HOURS for when, _ in self.samples):
                 return None  # the estimate is fresh and says nothing improves here

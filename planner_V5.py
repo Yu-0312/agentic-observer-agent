@@ -435,23 +435,16 @@ class Planner:
             return achievable_cache[i]
 
         anchors = []
-        checked_count = 0
-        for priority, i in candidates:
-            if checked_count >= ANCHOR_POOL and len(anchors) >= 3 * ANCHORS:
+        for checked, (priority, i) in enumerate(candidates):
+            if checked >= ANCHOR_POOL and len(anchors) >= 3 * ANCHORS:
                 break
-            checked_count += 1
             weighted = achievable(i) * priority / max(1e-9, self.value(i))  # keep the urgency terms
-            if weighted <= 0:
-                continue
-            if self.fast_level < 1:
-                near = self.neighbours(self.ra[i], self.dec[i], NEIGHBOUR_RADIUS_DEG)
-                fresh = sum(1 for j in near if self.factor[j] <= 0.0)
-                weighted *= (0.4 + 0.6 * min(1.0, fresh / self.grid.n))
-            anchors.append((weighted, i))
+            if weighted > 0:
+                anchors.append((weighted, i))
         if not anchors:
             return None
         anchors.sort(reverse=True)
-        n_anchors = 1 if self.fast_level >= 1 else ANCHORS
+        n_anchors = 1 if self.fast_level >= 1 else 6
         fibers = range(self.grid.n) if self.fast_level < 2 else (5, 6, 9, 10)
         best = None
         tried = 0

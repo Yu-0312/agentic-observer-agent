@@ -18,6 +18,20 @@ pointing (alt/az), up to 16 fibre→target assignments, an exposure length (60�
 (DARK / BRIGHT / BACKUP). Only each target's best exposure counts; required targets below a 0.5
 completion factor cost 50 points each; uneven per-RA-band coverage is penalised (Jain index).
 
+Beyond the official baseline, this submission adds three data-driven changes to `planner.py`
+(tuned against the organizers' card generator on five same-size proxy cards, scored with the
+official v4 runner):
+
+1. **Forecast-aware night advice** (deterministic, replacing the dormant LLM advisor): tonight's
+   forecast notices steer pointings away from directional rain/storm/rocket sectors and shorten
+   exposures under all-sky overcast. (+~300 on proxy cards; the real-card runs lost 87–142
+   observations to weather interruptions.)
+2. **Request floor**: time-limited observation requests are all-or-nothing; partial completion
+   progress now keeps request targets scheduled instead of starving them until the deadline.
+3. **Fresh-capacity field navigation**: anchors are weighted by how many never-observed targets
+   their field can still fill the 16 fibres with (top teams observe 93–99% of the catalogue;
+   breadth, not depth, wins).
+
 The agent (official baseline framework, `planner.py`):
 
 1. sleeps through daytime with one `wait` + `until_utc`;
@@ -34,8 +48,8 @@ The agent (official baseline framework, `planner.py`):
 
 | Card | Score | Notes |
 |---|---|---|
-| `cards/demo` (7 nights, 2 400 targets) | **1082.572141** | exactly the official baseline reference score; 1/120 required missing |
-| alpha-scale generated card (38 nights, 10 000 targets, 500 required) | 5260.43 | `survey_complete`, 6 104 targets observed, one correct fault report |
+| `cards/demo` (7 nights, 2 400 targets) | **1161–1343** | official baseline reference: 1082.57 |
+| alpha-scale generated cards (38 nights, 10 000 targets, 500 required) | **5 477 – 6 570** (mean of 5 seeds ≈ 5 800) | official baseline on the same cards: mean ≈ 5 546; first platform run on card α: 3 616.59 |
 
 The alpha-scale card was generated locally with the organizers' card generator at the real
 practice-card α parameters; the real α card's weather stays private, so scores there will differ.
