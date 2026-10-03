@@ -39,7 +39,7 @@ from skymath import (
 
 ALT_MARGIN_DEG = 0.6            # keep targets this far above the altitude limit for the whole exposure
 REQUIRED_BONUS = 60.0           # planning value of one required target (the penalty for missing one is 50)
-REQUIRED_SAFE_FACTOR = 0.62
+REQUIRED_SAFE_FACTOR = 0.58
 DONE_FACTOR = 0.95              # other targets are done at this factor
 PLAN_FACTOR_SAFETY = 0.9        # plan exposures as if the sky were 10% worse than estimated
 EDGE_MARGIN_DEG = 0.08          # prefer targets at least this far inside the fibre glass
@@ -389,7 +389,7 @@ class Planner:
             return 0.0
         if threshold <= after:
             return bonus
-        return bonus * 0.35 * (after / threshold) if threshold > 0.0 else 0.0
+        return bonus * 0.5 * (after / threshold) if threshold > 0.0 else 0.0
 
     def plan(self, now: datetime, night_end: datetime, night_index: int, hours: float):
         """Return an observe action dict, or None when nothing useful is up."""
