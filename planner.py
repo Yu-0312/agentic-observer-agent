@@ -520,7 +520,7 @@ class Planner:
                         mean_frac = (sum(self.band_dones.get(b, 0) for b in self.band_totals)
                                      / max(1, sum(self.band_totals.values())))
                         if done_frac < mean_frac:
-                            score += 0.3 * (mean_frac - done_frac) * self.weight[j]
+                            score += 0.45 * (mean_frac - done_frac) * self.weight[j]
                     if fib not in chosen or score > chosen[fib][0]:
                         chosen[fib] = (score, j, margin)
                 if not chosen:
