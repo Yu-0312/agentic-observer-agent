@@ -60,7 +60,7 @@ class BaselineAgent:
             if message.get("record_type") == "forecast":
                 self.forecast_notices = message.get("notices", [])
         planner.on_messages(payload.get("new_messages", []), payload.get("latest_bulletin"))
-        planner.on_requests(payload.get("active_requests", []))
+        planner.on_requests(payload.get("active_requests", []), now)
         planner.on_result(payload.get("last_result"), now, hours)
         self._pace(payload, now)
 

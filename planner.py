@@ -205,7 +205,7 @@ class Planner:
         self.notices = {(n.get("event_kind", ""), n.get("direction", "")) for n in bulletin.get("notices", [])
                         if n.get("event_kind") != "terrain_obstruction"}
 
-    def on_requests(self, requests: list) -> None:
+    def on_requests(self, requests: list, now=None) -> None:
         """Turn the current all-or-nothing request rewards into per-target planning values."""
         self.request_bonus = {}
         self.request_threshold = {}
@@ -217,6 +217,10 @@ class Planner:
                 continue
             completed = set(request.get("completed_target_ids", []))
             unit = 1.5 * float(request["completion_reward"]) / remaining
+            # all-or-nothing: a live request near its deadline must dominate field choice
+            deadline = parse_utc(request["deadline_utc"]) if request.get("deadline_utc") else None
+            if deadline is not None and now is not None and (deadline - now).total_seconds() < 48 * 3600.0:
+                unit *= 2.5
             threshold = float(request["completion_factor_threshold"])
             for target_id in request["target_ids"]:
                 if target_id in completed or target_id not in self.index_of:
