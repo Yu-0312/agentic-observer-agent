@@ -50,7 +50,7 @@ SKY_MEMORY_HOURS = 2.0         # forget sky-quality samples older than this (in 
 MIN_VISIBLE_SECONDS = 600
 NEIGHBOUR_RADIUS_DEG = 2.1
 ANCHORS = 3
-ANCHOR_POOL = 150             # top-ranked candidates checked for what they can still gain tonight
+ANCHOR_POOL = 400             # top-ranked candidates checked for what they can still gain tonight
 CLOSED_KINDS = {"rain", "storm", "tornado"}
 BLOCKING_KINDS = {"terrain_obstruction", "rocket_launch"}
 DIRECTION_AZ = {"N": 0.0, "NE": 45.0, "E": 90.0, "SE": 135.0, "S": 180.0, "SW": 225.0, "W": 270.0, "NW": 315.0}
@@ -110,11 +110,16 @@ class Planner:
         self.required = [is_required(row) for row in rows]
         self.hmax = [max_hour_angle_deg(d, self.lat, self.min_alt + ALT_MARGIN_DEG) for d in self.dec]
         self.factor = [0.0] * len(rows)          # best estimated exposure factor so far
+        self.band_totals: dict[int, int] = {}
+        self.band_dones: dict[int, int] = {}
         self.misses = [0] * len(rows)            # assigned but not hit (e.g. too close to a fibre edge)
         self.attempts = [0] * len(rows)          # required hits that still ended below factor 0.5
         self.active = [i for i in range(len(rows)) if self.hmax[i] > 0.0]
         self._build_index()
         self._build_windows()
+        for i in self.active:
+            band = int(self.ra[i] // 10.0)
+            self.band_totals[band] = self.band_totals.get(band, 0) + 1
 
         self.scale = 1.0                         # learned sky quality relative to the clear-sky model
         self.prior_scale = 1.0                   # long-run median, used when recent samples are missing
@@ -273,7 +278,11 @@ class Planner:
             ratio_match = factor_if_match * self.f0t0 / (self.flux[i] * self.pending_duration * prediction["model"])
             matched = self._band(ratio_match * prediction["band_model"]) == self.pending_program
             factor = factor_if_match if matched else factor_if_miss
-            self.factor[i] = max(self.factor[i], min(1.0, factor))
+            previous = self.factor[i]
+            self.factor[i] = max(previous, min(1.0, factor))
+            if previous < 0.5 <= self.factor[i]:
+                band = int(self.ra[i] // 10.0)
+                self.band_dones[band] = self.band_dones.get(band, 0) + 1
             if self.required[i] and self.factor[i] < 0.5:
                 self.attempts[i] += 1  # not enough yet: lower its priority a little for next time
             if factor < 0.97:
@@ -466,7 +475,7 @@ class Planner:
         if not anchors:
             return None
         anchors.sort(reverse=True)
-        n_anchors = 1 if self.fast_level >= 1 else ANCHORS
+        n_anchors = 1 if self.fast_level >= 1 else 4
         fibers = range(self.grid.n) if self.fast_level < 2 else (5, 6, 9, 10)
         best = None
         tried = 0
@@ -498,6 +507,15 @@ class Planner:
                         continue
                     # after a miss, only trust placements well inside the glass
                     score = v * (1.0 if margin >= EDGE_MARGIN_DEG * (1 + 1.5 * self.misses[j]) else 0.4)
+                    # nudge fibres toward under-represented RA bands (Jain uniformity penalty)
+                    band = int(self.ra[j] // 10.0)
+                    total_band = self.band_totals.get(band, 0)
+                    if total_band:
+                        done_frac = self.band_dones.get(band, 0) / total_band
+                        mean_frac = (sum(self.band_dones.get(b, 0) for b in self.band_totals)
+                                     / max(1, sum(self.band_totals.values())))
+                        if done_frac < mean_frac:
+                            score += 0.3 * (mean_frac - done_frac) * self.weight[j]
                     if fib not in chosen or score > chosen[fib][0]:
                         chosen[fib] = (score, j, margin)
                 if not chosen:
