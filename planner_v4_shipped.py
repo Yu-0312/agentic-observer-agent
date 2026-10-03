@@ -51,7 +51,7 @@ MIN_VISIBLE_SECONDS = 600
 NEIGHBOUR_RADIUS_DEG = 2.1
 ANCHORS = 3
 ANCHOR_POOL = 150             # top-ranked candidates checked for what they can still gain tonight
-CLOSED_KINDS = {"rain", "storm", "tornado"}
+CLOSED_KINDS = {"rain", "storm"}
 BLOCKING_KINDS = {"terrain_obstruction", "rocket_launch"}
 DIRECTION_AZ = {"N": 0.0, "NE": 45.0, "E": 90.0, "SE": 135.0, "S": 180.0, "SW": 225.0, "W": 270.0, "NW": 315.0}
 
@@ -74,11 +74,6 @@ class Planner:
         self.grid = FiberGrid(instrument)
         self.min_exposure = int(instrument["exposure"]["min_duration_seconds"])
         self.max_exposure = int(instrument["exposure"]["max_duration_seconds"])
-        # search radius that covers the whole fibre field for any instrument geometry:
-        # half the corner-fibre distance (sqrt2 across the square grid) plus the glass radius
-        glass_radius = 0.5 * float(instrument.get("glass_side_deg", self.grid.glass))
-        self.search_radius = round(0.5 * self.grid.pitch * (self.grid.side - 1) * 1.41421356
-                                   + glass_radius + 0.4, 3)
         score = init["scoring"]
         self.f0t0 = float(score["flux_zero_point"]) * float(score["exposure_zero_point_seconds"])
         self.q0 = float(score["q0"])
@@ -91,23 +86,13 @@ class Planner:
         columns = init["targets"]["columns"]
         col = {name: columns.index(name) for name in columns}
         rows = init["targets"]["rows"]
-
-        def cell(row, name, default=None):
-            idx = col.get(name)
-            return row[idx] if idx is not None and idx < len(row) else default
-
-        self.ids = [str(row[col["target_id"]]) for row in rows]
+        self.ids = [row[col["target_id"]] for row in rows]
         self.index_of = {target_id: i for i, target_id in enumerate(self.ids)}
-        self.ra = [float(cell(row, "ra_deg", 0.0)) for row in rows]
-        self.dec = [float(cell(row, "dec_deg", 0.0)) for row in rows]
-        self.flux = [max(1e-6, float(cell(row, "feature_flux", 1e-6))) for row in rows]
-        self.weight = [float(cell(row, "science_weight", 1.0)) for row in rows]
-
-        def is_required(row):
-            value = cell(row, "required", False)
-            return str(value).strip().lower() in ("true", "1", "yes") or value is True
-
-        self.required = [is_required(row) for row in rows]
+        self.ra = [float(row[col["ra_deg"]]) for row in rows]
+        self.dec = [float(row[col["dec_deg"]]) for row in rows]
+        self.flux = [float(row[col["feature_flux"]]) for row in rows]
+        self.weight = [float(row[col["science_weight"]]) for row in rows]
+        self.required = [bool(row[col["required"]]) for row in rows]
         self.hmax = [max_hour_angle_deg(d, self.lat, self.min_alt + ALT_MARGIN_DEG) for d in self.dec]
         self.factor = [0.0] * len(rows)          # best estimated exposure factor so far
         self.misses = [0] * len(rows)            # assigned but not hit (e.g. too close to a fibre edge)
@@ -459,7 +444,7 @@ class Planner:
             if weighted <= 0:
                 continue
             if self.fast_level < 1:
-                near = self.neighbours(self.ra[i], self.dec[i], self.search_radius)
+                near = self.neighbours(self.ra[i], self.dec[i], NEIGHBOUR_RADIUS_DEG)
                 fresh = sum(1 for j in near if self.factor[j] <= 0.0)
                 weighted *= (0.4 + 0.6 * min(1.0, fresh / self.grid.n))
             anchors.append((weighted, i))
@@ -477,7 +462,7 @@ class Planner:
                 break  # nothing places well right now
             tried += 1
             a_alt, a_az = altaz(anchor)
-            near = [j for j in self.neighbours(self.ra[anchor], self.dec[anchor], self.search_radius) if j in visible]
+            near = [j for j in self.neighbours(self.ra[anchor], self.dec[anchor], NEIGHBOUR_RADIUS_DEG) if j in visible]
             near_values = {j: achievable(j) for j in near}
             for fiber in fibers:
                 d_north, d_east = self.grid.fiber_center(fiber)

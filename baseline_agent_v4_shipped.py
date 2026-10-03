@@ -41,8 +41,6 @@ class BaselineAgent:
         self.planner = Planner(init, log=log)
         self.advisor = LLMAdvisor(log=log)
         self.start = parse_utc(init["survey"]["start_utc"])
-        # calendar date of each night exactly as the card names it (forecast notices use it)
-        self.night_dates = [str(n.get("night_id", ""))[1:] for n in init["survey"]["nights"]]
         self.forecast_notices: list = []
         self.night_seen = None
         self.reports = 0
@@ -96,19 +94,12 @@ class BaselineAgent:
         into = (now - night_start).total_seconds() % slot
         return int(max(60, min(3600, slot - into)))
 
-    def _night_date(self, night_start) -> str:
-        """Calendar date the card itself uses for this night (from night_id)."""
-        index = next((k for k, (start, _) in enumerate(self.planner.nights) if start == night_start), None)
-        if index is not None and index < len(self.night_dates):
-            return self.night_dates[index]
-        return night_start.date().isoformat()
-
     def _pace(self, payload: dict, now) -> None:
         """Do less work per decision when the wall clock is short for the nights still to come."""
         wall = payload.get("wallclock") or {}
         remaining_wall = float(wall.get("remaining_seconds", 1e9))
         night_seconds = sum(max(0.0, (end - max(start, now)).total_seconds()) for start, end in self.planner.nights if end > now)
-        decisions_left = max(1.0, night_seconds / max(1, self.planner.slot_seconds))
+        decisions_left = max(1.0, night_seconds / 700.0)
         per_decision = remaining_wall / decisions_left
         level = 0 if per_decision > 0.12 else 1 if per_decision > 0.04 else 2
         if level != self.planner.fast_level:
@@ -121,7 +112,7 @@ class BaselineAgent:
         if not self.advisor.enabled:
             # deterministic stand-in for the advisor: tonight's forecast notices name the
             # event kind and the compass sectors it will come from
-            night_date = self._night_date(night_start)
+            night_date = (night_start - timedelta(hours=12)).date().isoformat()
             for notice in self.forecast_notices:
                 if night_date not in notice.get("nights", []):
                     continue
@@ -132,7 +123,7 @@ class BaselineAgent:
                 elif kind in ("overcast", "cloudy", "haze", "smoggy") and direction == "ALL":
                     self.planner.duration_scale = 0.85   # dimmer sky tonight: shorter exposures
             return
-        night_date = self._night_date(night_start)
+        night_date = (night_start - timedelta(hours=12)).date().isoformat()
         tonight = [n for n in self.forecast_notices if night_date in n.get("nights", [])]
         bulletin = (payload.get("latest_bulletin") or {}).get("notices", [])
         left = float((payload.get("wallclock") or {}).get("remaining_seconds", 0))
@@ -178,33 +169,6 @@ class BaselineAgent:
                 "decision_source": "llm-confirmed" if verdict else "rule"}
 
 
-class FallbackAgent:
-    """Degraded mode when the catalogue cannot be parsed: keep the protocol alive."""
-
-    def __init__(self, init: dict, log=lambda text: None):
-        self.planner = None
-        self.advisor = type("A", (), {"calls": 0, "enabled": False})()
-        self.start = parse_utc(init["survey"]["start_utc"])
-        self.nights = [(parse_utc(n["observing_start_utc"]), parse_utc(n["observing_end_utc"]))
-                       for n in init["survey"].get("nights", [])]
-        self.slot_seconds = int(init["survey"].get("slot_seconds", 900))
-        self.observes = 0
-        self.reports = 0
-        log(f"fallback: survey continues with no science output ({len(self.nights)} nights)")
-
-    def respond(self, payload: dict) -> dict:
-        now = parse_utc(payload["now_utc"])
-        for start, end in self.nights:
-            if start <= now < end:
-                into = (now - start).total_seconds() % self.slot_seconds
-                return {"action": "wait", "duration_seconds": int(max(60, self.slot_seconds - into)),
-                        "reason": "degraded mode"}
-        nxt = next((start for start, _ in self.nights if start > now), None)
-        if nxt is None:
-            return {"action": "finish", "reason": "degraded mode: survey over"}
-        return {"action": "wait", "until_utc": format_utc(nxt), "reason": "degraded mode"}
-
-
 def main() -> int:
     agent = None
     for line in sys.stdin:
@@ -215,19 +179,14 @@ def main() -> int:
         if message.get("protocol_version") != PROTOCOL:
             log(f"baseline: unexpected protocol {message.get('protocol_version')!r}")
         if kind == "initialize":
-            try:
-                agent = BaselineAgent(message["payload"])
-            except Exception as exc:  # noqa: BLE001 - a broken catalogue must not kill the run
-                log(f"baseline: initialize failed ({type(exc).__name__}: {exc}); degraded mode")
-                agent = FallbackAgent(message["payload"], log=log)
+            agent = BaselineAgent(message["payload"])
         elif kind == "decision_request":
             try:
                 action = agent.respond(message["payload"])
             except Exception as exc:  # noqa: BLE001 - never crash the run: wait one slot instead
                 log(f"baseline: error {type(exc).__name__}: {exc}; waiting one slot")
                 action = {"action": "wait", "duration_seconds": 900, "reason": "internal error"}
-            advisor_calls = getattr(getattr(agent, "advisor", None), "calls", 0)
-            action.setdefault("decision_source", "llm-advised" if advisor_calls else "deterministic")
+            action.setdefault("decision_source", "llm-advised" if agent and agent.advisor.calls else "deterministic")
             print(json.dumps({"protocol_version": PROTOCOL, "message_type": "decision_response",
                               "decision_sequence": message["decision_sequence"], **action}, separators=(",", ":")), flush=True)
         elif kind == "finish":
