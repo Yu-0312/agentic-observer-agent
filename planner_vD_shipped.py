@@ -426,9 +426,8 @@ class Planner:
             h = self.hmax[i]
             if -h <= ha and ha + min_visible <= h:
                 nights_left = max(1, self.last_night[i] - night_index + 1)
-                # no setting-panic: a target that sets tonight returns tomorrow night;
-                # observing at culmination (high altitude) banks a higher factor
-                candidates.append((v * (1.0 + 2.0 / nights_left), i))
+                setting = 1.0 + 0.5 * max(0.0, ha / h) if h < 180 else 1.0
+                candidates.append((v * (1.0 + 2.0 / nights_left) * setting, i))
         self.active = still_active
         if not candidates:
             return None

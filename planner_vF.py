@@ -39,7 +39,7 @@ from skymath import (
 
 ALT_MARGIN_DEG = 0.6            # keep targets this far above the altitude limit for the whole exposure
 REQUIRED_BONUS = 60.0           # planning value of one required target (the penalty for missing one is 50)
-REQUIRED_SAFE_FACTOR = 0.58
+REQUIRED_SAFE_FACTOR = 0.66
 DONE_FACTOR = 0.95              # other targets are done at this factor
 PLAN_FACTOR_SAFETY = 0.9        # plan exposures as if the sky were 10% worse than estimated
 EDGE_MARGIN_DEG = 0.08          # prefer targets at least this far inside the fibre glass
