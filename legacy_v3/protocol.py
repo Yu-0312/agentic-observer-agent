@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-
 PROTOCOL_VERSION = "participant-agent-protocol-v2"
 INITIAL_PUBLICATION_VERSION = "initial-publication-v2"
 DECISION_SNAPSHOT_VERSION = "decision-snapshot-v3"

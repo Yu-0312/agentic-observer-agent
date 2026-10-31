@@ -71,7 +71,7 @@ def _parse_object(text: str) -> dict[str, object]:
     except json.JSONDecodeError:
         start, end = stripped.find("{"), stripped.rfind("}")
         if start < 0 or end <= start:
-            raise ValueError("model output contains no JSON object")
+            raise ValueError("model output contains no JSON object") from None
         value = json.loads(stripped[start : end + 1])
     if not isinstance(value, dict):
         raise ValueError("model output must be a JSON object")

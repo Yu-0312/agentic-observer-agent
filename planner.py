@@ -18,7 +18,10 @@ bulletins/forecasts and its own results. Standard library only.
 from __future__ import annotations
 
 import bisect
+import json
 import math
+import os
+import sys
 from collections import deque
 from datetime import datetime, timedelta
 
@@ -54,6 +57,47 @@ ANCHOR_POOL = 440             # top-ranked candidates checked for what they can 
 CLOSED_KINDS = {"rain", "storm", "tornado"}
 BLOCKING_KINDS = {"terrain_obstruction", "rocket_launch"}
 DIRECTION_AZ = {"N": 0.0, "NE": 45.0, "E": 90.0, "SE": 135.0, "S": 180.0, "SW": 225.0, "W": 270.0, "NW": 315.0}
+
+# Tuned constants above can be overridden for parameter sweeps without editing code, e.g.
+#   PLANNER_OVERRIDES='{"ANCHOR_POOL": 500, "NEIGHBOUR_RADIUS_DEG": 2.4}' python3 -u baseline_agent.py
+# Unknown keys or wrong types are ignored (with a note on stderr) so a typo can never crash a run.
+TUNABLE = (
+    "ALT_MARGIN_DEG", "REQUIRED_BONUS", "REQUIRED_SAFE_FACTOR", "DONE_FACTOR", "PLAN_FACTOR_SAFETY",
+    "EDGE_MARGIN_DEG", "DURATIONS", "RECENT_SAMPLES", "EARLIER_SAMPLES", "SKY_MEMORY_HOURS",
+    "MIN_VISIBLE_SECONDS", "NEIGHBOUR_RADIUS_DEG", "ANCHORS", "ANCHOR_POOL",
+)
+
+
+def apply_overrides(raw: str | None = None) -> dict:
+    """Apply PLANNER_OVERRIDES (JSON object) to the tunable module constants; returns what was applied."""
+    raw = os.environ.get("PLANNER_OVERRIDES", "") if raw is None else raw
+    if not raw.strip():
+        return {}
+    try:
+        values = json.loads(raw)
+    except ValueError:
+        print("PLANNER_OVERRIDES is not valid JSON; ignored", file=sys.stderr)
+        return {}
+    applied = {}
+    module = globals()
+    for key, value in (values.items() if isinstance(values, dict) else []):
+        current = module.get(key)
+        if key not in TUNABLE:
+            print(f"PLANNER_OVERRIDES: unknown key {key!r} ignored", file=sys.stderr)
+            continue
+        if isinstance(current, tuple) and isinstance(value, list) and value and all(isinstance(v, (int, float)) for v in value):
+            value = tuple(value)
+        elif isinstance(current, float) and isinstance(value, (int, float)) and not isinstance(value, bool):
+            value = float(value)
+        elif not (isinstance(current, int) and isinstance(value, int) and not isinstance(value, bool)):
+            print(f"PLANNER_OVERRIDES: {key} has the wrong type; ignored", file=sys.stderr)
+            continue
+        module[key] = value
+        applied[key] = value
+    return applied
+
+
+apply_overrides()
 
 
 def _az_distance(a: float, b: float) -> float:

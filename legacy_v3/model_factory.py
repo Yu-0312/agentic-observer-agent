@@ -14,7 +14,6 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 PROVIDER_ALIASES = {
     "chatgpt": "openai",
     "claude": "anthropic",

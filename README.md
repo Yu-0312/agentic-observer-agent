@@ -66,3 +66,17 @@ practice-card α parameters; the real α card's weather stays private, so scores
 
 MIT — see [LICENSE](LICENSE). Challenge data, task cards, evaluation code and example
 projects are provided by the organizers under CC BY-NC 4.0.
+
+## Tests and parameter sweeps
+
+```
+pip install pytest && python -m pytest -q tests
+```
+
+`tests/test_skymath.py` covers the sky geometry (RA/Dec ↔ Alt/Az round trips, sidereal time,
+tangent-plane offsets, fibre classification). The tuned constants at the top of `planner.py`
+can be overridden for sweeps without editing code:
+
+```
+PLANNER_OVERRIDES='{"ANCHOR_POOL": 500, "NEIGHBOUR_RADIUS_DEG": 2.4}' python3 -u baseline_agent.py
+```

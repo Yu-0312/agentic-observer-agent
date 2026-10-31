@@ -19,9 +19,9 @@ for _candidate in (AGENT_DIR, AGENT_DIR.parent):
     if (_candidate / "scoring_preview.py").exists() and str(_candidate) not in sys.path:
         sys.path.insert(0, str(_candidate))
 
-from decision_graph import MinimalDecisionAgent
-from model_factory import ModelConfigurationError, ModelSettings, build_chat_model
-from protocol import decision_response, parse_platform_message
+from decision_graph import MinimalDecisionAgent  # noqa: E402 - sys.path is set above
+from model_factory import ModelConfigurationError, ModelSettings, build_chat_model  # noqa: E402 - sys.path is set above
+from protocol import decision_response, parse_platform_message  # noqa: E402 - sys.path is set above
 
 
 def run(stdin=sys.stdin, stdout=sys.stdout) -> None:

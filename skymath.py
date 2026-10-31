@@ -94,7 +94,7 @@ def shift_altaz(alt_deg: float, az_deg: float, d_north: float, d_east: float) ->
     north = (-math.sin(alt) * math.cos(az), -math.sin(alt) * math.sin(az), math.cos(alt))
     east = (-math.sin(az), math.cos(az), 0.0)
     dn, de = math.radians(d_north), math.radians(d_east)
-    x, y, z = (p + dn * n + de * e for p, n, e in zip(point, north, east))
+    x, y, z = (p + dn * n + de * e for p, n, e in zip(point, north, east, strict=True))
     norm = math.sqrt(x * x + y * y + z * z)
     x, y, z = x / norm, y / norm, z / norm
     return math.degrees(math.asin(max(-1.0, min(1.0, z)))), math.degrees(math.atan2(y, x)) % 360.0

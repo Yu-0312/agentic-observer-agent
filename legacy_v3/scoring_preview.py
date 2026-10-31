@@ -7,7 +7,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from typing import Mapping, Sequence
 
-
 PROGRAMS = ("DARK", "BRIGHT", "BACKUP")
 
 
